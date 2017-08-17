@@ -5,7 +5,7 @@ sub ddt_curses(|args ) is export
 {
 try 
 	{
-	require Data::Dump::Tree::CursesFoldable <&display_foldable> ;
+	require Data::Dump::Tree::TerminalFoldable <&display_foldable> ;
 	display_foldable |args ;
 	}
 

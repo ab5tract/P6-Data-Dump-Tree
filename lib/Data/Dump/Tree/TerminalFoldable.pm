@@ -1,19 +1,19 @@
 
-unit module Data::Dump::Tree::CursesFoldable ; 
+unit module Data::Dump::Tree::TerminalPrint ; 
 
 =begin pod
 
-=NAME Data::Dump::Tree::CursesFoldable 
+=NAME Data::Dump::Tree::TerminalPrint 
 
 =SYNOPSIS
 
-	use Data::Dump::Tree::CursesFoldable ;
+	use Data::Dump::Tree::TerminalPrint ;
 
 	display_foldable([ [ [ 1 ] ], ], :debug, :title<first>) ;
 
 =DESCRIPTION
 
-Display a rendered data structure in a NCurses window.
+Display a rendered data structure in a Terminal::Print window.
 
 You cam navigate the structure and fold it's elements.
 
@@ -31,7 +31,7 @@ under the same terms as Perl6 itself.
 
 =SEE-ALSO
 
-NCurses
+Terminal::Print 
 
 =end pod
 
@@ -40,9 +40,8 @@ use Data::Dump::Tree::Foldable ;
 use Data::Dump::Tree::DescribeBaseObjects ;
 use Data::Dump::Tree::Colorizer ;
 
-die "Termonal::Print support missing" ;
+use Terminal::Print ;
 
-use NCurses;
 
 sub get_curses_foldable ($s, *%options) is export
 { 
@@ -76,35 +75,24 @@ display_foldable(get_curses_foldable ($s, |%options), :$page_size, :$debug, :$de
 
 multi sub display_foldable (Data::Dump::Tree::Foldable $f, :$page_size is copy, :$debug, :$debug_column, *%options) is export
 {
-my $win = initscr() or die "Failed to initialize ncurses\n";
-keypad($win, TRUE) ;
-noecho ;
-raw ;
-start_color ;
-curs_set 0 ;
+my $screen = Terminal::Print.new;
 
-if has_colors() && COLOR_PAIRS() >= 13
-	{
-	init_pair(1,  COLOR_WHITE,	COLOR_BLACK) ; # reset
+$screen.initialize-screen;                      # saves current screen state, blanks screen, and hides cursor
 
-	init_pair(2,  COLOR_BLUE,	COLOR_BLACK) ; # ddt_address
-	init_pair(3,  COLOR_GREEN,	COLOR_BLACK) ; # link
-	init_pair(4,  COLOR_YELLOW,	COLOR_BLACK) ; # perl_address
-	init_pair(5,  COLOR_MAGENTA,	COLOR_BLACK) ; # header
-	init_pair(6,  COLOR_CYAN,	COLOR_BLACK) ; # key
-	init_pair(7,  COLOR_CYAN,	COLOR_BLACK) ; # binder
-	init_pair(8,  COLOR_WHITE,	COLOR_BLACK) ; # value
-	init_pair(9,  COLOR_BLACK,	COLOR_BLACK) ; # wrap
+$screen.change-cell(9, 23, '%');                # change the contents of the grid cell at line 9 column 23
+$screen.cell-string(9, 23);                     # returns the escape sequence to put '%' on line 9 column 23
+$screen.print-cell(9, 23);                      # prints "%" on the 23rd column of the 9th row
+$screen.print-cell(9, 23, '&');                 # changes the cell at 9:23 to '&' and prints it
 
-	init_pair(10, COLOR_WHITE,	COLOR_BLACK) ; # gl_0 
-	init_pair(11, COLOR_GREEN,	COLOR_BLACK) ; # gl_1
-	init_pair(12, COLOR_CYAN,	COLOR_BLACK) ; # gl_2
-	init_pair(13, COLOR_BLACK,	COLOR_BLACK) ; # gl_3
-	
-	init_pair(13, COLOR_BLACK,	COLOR_YELLOW) ; # highlight
-	}
+$screen.print-string(9, 23, 'hello\nworld!');   # prints a whole string (which can include newlines!)
+
+$screen(9,23,'hello\nworld!');                  # uses CALL-ME to dispatch to .print-string
+
+$screen.shutdown-screen;                        # unwinds the process from .initialize-screen
 
 $page_size //= %+((qx[stty size] || '0 80') ~~ /(\d+) \s+ \d+/)[0] ; 
+
+return ;
 
 my $g = $f.get_view ; $g.set: :$page_size ;
 
@@ -114,13 +102,11 @@ loop
 	{
 	if $refresh
 		{
-		clear ;
 		display($g) ;
 		debug($g, :$debug_column) if $debug ;
-		nc_refresh ;
 		}
 
-	my $command = getch ;
+	my $command = 'q' ;
 
 	given $command 
 		{
@@ -135,21 +121,19 @@ loop
 		when $_.chr eq 'e'  { $refresh = $g.selected_line_up }
 		when $_.chr eq 'd'  { $refresh = $g.selected_line_down }
 
-		when $_ eq KEY_UP    { $refresh = $g.line_up }
-		when $_ eq KEY_DOWN  { $refresh = $g.line_down }
-		when $_ eq KEY_PPAGE { $refresh = $g.page_up }
-		when $_ eq KEY_NPAGE { $refresh = $g.page_down }
+		#when $_ eq KEY_UP    { $refresh = $g.line_up }
+		#when $_ eq KEY_DOWN  { $refresh = $g.line_down }
+		#when $_ eq KEY_PPAGE { $refresh = $g.page_up }
+		#when $_ eq KEY_NPAGE { $refresh = $g.page_down }
 
-		when KEY_LEFT { $refresh = $g.fold_flip_selected }
-		when KEY_RIGHT { $refresh = $g.fold_flip_selected }
+		#when KEY_LEFT { $refresh = $g.fold_flip_selected }
+		#when KEY_RIGHT { $refresh = $g.fold_flip_selected }
 
-		when KEY_HOME { $refresh = $g.home }
-		when KEY_END { $refresh = $g.end }
+		#when KEY_HOME { $refresh = $g.home }
+		#when KEY_END { $refresh = $g.end }
 		}
 	}
 
-#delwin($win) if $win ;
-endwin ;
 }
 
 # ---------------------------------------------------------------------------------
@@ -160,9 +144,11 @@ my $fold_column = 1 ;
 my $fold_state_column = 3 ;
 my $start_column = 5 ;
 
+my sub color_set (*@a){} ;
+
 for $g.get_lines Z 0..* -> ($line, $index)
 	{
-	mvaddstr($index, $fold_state_column, $line[1] ?? '*' !! ' ') ;
+	#mvaddstr($index, $fold_state_column, $line[1] ?? '*' !! ' ') ;
 
 	my $pos = 0 ;
 
@@ -173,16 +159,16 @@ for $g.get_lines Z 0..* -> ($line, $index)
 		if 0 # $g.selected_line == $index #highlig
 			{ color_set(13, 0) }
 		else
-			{ color_set($_[0].Int, 0) }
+			{color_set($_[0].Int, 0) }
 
-		mvaddstr($index, $start_column + $pos, $text) ;
+		#mvaddstr($index, $start_column + $pos, $text) ;
 		$pos += $_[1].chars ;
 		}
 
-	color_set(0, 0);
+	#color_set(0, 0);
 	}
 	
-mvaddstr($g.selected_line, $fold_column, '>') ;
+#mvaddstr($g.selected_line, $fold_column, '>') ;
 }
 
 # ---------------------------------------------------------------------------------
@@ -219,7 +205,7 @@ my @lines = get_dump_lines $geometry,
 
 for @lines Z 0..* -> ($line, $index)
 	{
-	mvaddstr($index, $debug_column // 30, $line.map( {$_.join} ).join ) ;
+	#mvaddstr($index, $debug_column // 30, $line.map( {$_.join} ).join ) ;
 	}
 }
 
